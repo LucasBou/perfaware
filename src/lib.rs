@@ -1,14 +1,15 @@
+#![allow(dead_code)]
 use std::ops::BitAnd;
 
 #[derive(Debug, PartialEq)]
 enum Instruction {
-    MOV(Register, Register),
+    Mov(Register, Register),
 }
 
 impl Instruction {
     fn to_asm(&self) -> String {
         match self {
-            Instruction::MOV(dest_register, from_register) => format!(
+            Instruction::Mov(dest_register, from_register) => format!(
                 "mov {}, {}",
                 dest_register.to_asm_label(),
                 from_register.to_asm_label()
@@ -82,7 +83,7 @@ fn parse_mov(machine_code: &[u8]) -> Option<Instruction> {
     let d_flag = high_byte.bitand(0b00000010).eq(&2);
     let w_flag = high_byte.bitand(0b00000001).eq(&1);
 
-    let mod_field = low_byte.bitand(0b11000000) >> 6;
+    let _mod_field = low_byte.bitand(0b11000000) >> 6;
     let reg_field = low_byte.bitand(0b00111000) >> 3;
     let rm_field = low_byte.bitand(0b00000111);
 
@@ -92,7 +93,7 @@ fn parse_mov(machine_code: &[u8]) -> Option<Instruction> {
         (rm_field, reg_field)
     };
 
-    Some(Instruction::MOV(
+    Some(Instruction::Mov(
         reg_field_to_reg(dest_reg_field, w_flag),
         reg_field_to_reg(from_reg_field, w_flag),
     ))
@@ -166,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_asm_serialisation_basic() {
-        let instruction = Instruction::MOV(
+        let instruction = Instruction::Mov(
             Register::C(RegisterPart::All),
             Register::B(RegisterPart::All),
         );
@@ -178,7 +179,7 @@ mod tests {
         let machine_code = &[0b10001011_u8, 0b00001011_u8];
         assert_eq!(
             parse_mov(machine_code),
-            Some(Instruction::MOV(
+            Some(Instruction::Mov(
                 Register::C(RegisterPart::All),
                 Register::B(RegisterPart::All),
             ))
