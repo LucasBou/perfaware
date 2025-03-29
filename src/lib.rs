@@ -73,6 +73,14 @@ fn dissassemble(machine_code: &[u8]) -> Vec<Instruction> {
         .collect()
 }
 
+pub fn generate_assembly(machine_code: &[u8]) -> String {
+    dissassemble(machine_code)
+        .iter()
+        .map(|instr| instr.to_asm())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn parse_mov(machine_code: &[u8]) -> Option<Instruction> {
     let high_byte = machine_code[0];
     let low_byte = machine_code[1];
