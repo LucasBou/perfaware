@@ -20,12 +20,19 @@ fn create_file_in_temp_dir<P: AsRef<Path>>(path: P) -> std::io::Result<(File, Pa
 }
 
 fn assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file: &str) {
-    let contents = std::fs::read(input_file).unwrap();
+    let contents = std::fs::read(input_file).expect("Failed to read machine code file");
     let output = generate_assembly(&contents);
-    let output_file_name = input_file.split("/").last().unwrap().to_string() + ".asm";
-    let (mut output_file_handle, output_file_path) =
-        create_file_in_temp_dir(&output_file_name).unwrap();
-    output_file_handle.write_all(output.as_bytes()).unwrap();
+    let output_file_name = input_file
+        .split("/")
+        .last()
+        .expect("Failed to get the filename for the output file")
+        .to_string()
+        + ".asm";
+    let (mut output_file_handle, output_file_path) = create_file_in_temp_dir(&output_file_name)
+        .expect("Failed to create the temporary output file that will be used by nasm");
+    output_file_handle
+        .write_all(output.as_bytes())
+        .expect("Failed to write asm code into the temporary file");
     let nasm_output = std::process::Command::new("nasm")
         .args(&[
             "-f",
@@ -35,7 +42,7 @@ fn assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file: &str) {
             output_file_path.as_os_str().to_str().unwrap(),
         ])
         .output()
-        .unwrap();
+        .expect("Failed running the nasm command");
     let _ = fs::remove_file(output_file_path);
     assert_eq!(nasm_output.stdout, contents)
 }
