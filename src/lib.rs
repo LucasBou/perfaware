@@ -7,10 +7,8 @@ enum InParsingInstruction {
     MovMemReg1(bool, bool),
     MovRegReg2(bool, bool, u8, u8, u8),
     MovRegReg3(bool, bool, u8, u8, u8, u8),
-    MovRegReg4(bool, bool, u8, u8, u8, u8, u8),
     MovImmtoReg1(bool, u8),
     MovImmtoReg2(bool, u8, u8),
-    MovImmtoReg3(bool, u8, u8, u8),
 }
 
 struct InstructionParser {
@@ -80,19 +78,9 @@ impl InstructionParser {
             ) => {
                 unreachable!()
             }
-            InParsingInstruction::MovRegReg4(
-                d_flag,
-                w_flag,
-                mod_field,
-                reg_field,
-                rm_field,
-                disp_low,
-                disp_high,
-            ) => {
-                unreachable!()
-            }
             InParsingInstruction::MovImmtoReg1(w_flag, reg_field) => {
                 if !w_flag {
+                    self.state = InParsingInstruction::Start;
                     return Some(Instruction::Mov(
                         reg_field_to_reg(reg_field, w_flag),
                         MovOperand::Immediate(Immediate::EightBit(byte)),
@@ -102,10 +90,21 @@ impl InstructionParser {
                     None
                 }
             }
-            InParsingInstruction::MovImmtoReg2(_, _, _) => todo!(),
-            InParsingInstruction::MovImmtoReg3(_, _, _, _) => todo!(),
+            InParsingInstruction::MovImmtoReg2(w_flag, reg_field, low_byte) => {
+                self.state = InParsingInstruction::Start;
+                Some(Instruction::Mov(
+                    reg_field_to_reg(reg_field, w_flag),
+                    MovOperand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(
+                        low_byte, byte,
+                    ))),
+                ))
+            }
         }
     }
+}
+
+fn u16_from_two_switched_u8(low_byte: u8, high_byte: u8) -> u16 {
+    ((high_byte as u16) << 8) | (low_byte as u16)
 }
 
 #[derive(Debug, PartialEq)]
@@ -329,6 +328,17 @@ mod tests {
             Instruction::Mov(
                 Register::C(RegisterPart::Low),
                 MovOperand::Immediate(Immediate::EightBit(12))
+            )
+        )
+    }
+    #[test]
+    fn test_parse_mov_16bit_immediate_to_register() {
+        let machine_code = &[0xB9, 0x0C, 0x00];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                Register::C(RegisterPart::All),
+                MovOperand::Immediate(Immediate::SixteenBit(12))
             )
         )
     }
