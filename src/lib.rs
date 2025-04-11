@@ -55,7 +55,7 @@ impl InstructionParser {
                         (rm_field, reg_field)
                     };
                     return Some(Instruction::Mov(
-                        reg_field_to_reg(dest_reg_field, w_flag),
+                        LeftMovOperand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
                         MovOperand::Register(reg_field_to_reg(from_reg_field, w_flag)),
                     ));
                 }
@@ -63,7 +63,7 @@ impl InstructionParser {
                 if mod_field == 0 {
                     self.state = InParsingInstruction::Start;
                     return Some(Instruction::Mov(
-                        reg_field_to_reg(reg_field, w_flag),
+                        LeftMovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
                         MovOperand::EffAddCalculation(rm_field_to_effective_address_calculation(
                             rm_field,
                         )),
@@ -79,7 +79,7 @@ impl InstructionParser {
                 if mod_field == 1 {
                     self.state = InParsingInstruction::Start;
                     return Some(Instruction::Mov(
-                        reg_field_to_reg(reg_field, w_flag),
+                        LeftMovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
                         MovOperand::EffAddCalculationWithDisplacement(
                             rm_field_to_effective_address_calculation(rm_field),
                             Displacement::EightBit(byte),
@@ -96,16 +96,16 @@ impl InstructionParser {
                 unreachable!()
             }
             InParsingInstruction::MovRegReg3(
-                d_flag,
+                _d_flag,
                 w_flag,
-                mod_field,
+                _mod_field,
                 reg_field,
                 rm_field,
                 disp_low,
             ) => {
                 self.state = InParsingInstruction::Start;
                 Some(Instruction::Mov(
-                    reg_field_to_reg(reg_field, w_flag),
+                    LeftMovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
                     MovOperand::EffAddCalculationWithDisplacement(
                         rm_field_to_effective_address_calculation(rm_field),
                         Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, byte)),
@@ -116,7 +116,7 @@ impl InstructionParser {
                 if !w_flag {
                     self.state = InParsingInstruction::Start;
                     Some(Instruction::Mov(
-                        reg_field_to_reg(reg_field, w_flag),
+                        LeftMovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
                         MovOperand::Immediate(Immediate::EightBit(byte)),
                     ))
                 } else {
@@ -127,7 +127,7 @@ impl InstructionParser {
             InParsingInstruction::MovImmtoReg2(w_flag, reg_field, low_byte) => {
                 self.state = InParsingInstruction::Start;
                 Some(Instruction::Mov(
-                    reg_field_to_reg(reg_field, w_flag),
+                    LeftMovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
                     MovOperand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(
                         low_byte, byte,
                     ))),
@@ -139,6 +139,19 @@ impl InstructionParser {
 
 fn u16_from_two_switched_u8(low_byte: u8, high_byte: u8) -> u16 {
     ((high_byte as u16) << 8) | (low_byte as u16)
+}
+
+#[derive(Debug, PartialEq)]
+enum LeftMovOperand {
+    Register(Register),
+}
+
+impl LeftMovOperand {
+    fn to_asm_label(&self) -> String {
+        match self {
+            LeftMovOperand::Register(register) => register.to_asm_label(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -161,7 +174,7 @@ impl MovOperand {
             MovOperand::Register(register) => register.to_asm_label(),
             MovOperand::Immediate(immediate) => immediate.to_asm_label(),
             MovOperand::EffAddCalculation(calc) => calc.to_asm_label(),
-            MovOperand::EffAddCalculationWithDisplacement(eff_add_calculation, displacement) => {
+            MovOperand::EffAddCalculationWithDisplacement(_eff_add_calculation, _displacement) => {
                 todo!()
             }
         }
@@ -227,16 +240,16 @@ fn rm_field_to_effective_address_calculation(rm_field: u8) -> EffAddCalculation 
 
 #[derive(Debug, PartialEq)]
 enum Instruction {
-    Mov(Register, MovOperand),
+    Mov(LeftMovOperand, MovOperand),
 }
 
 impl Instruction {
     fn to_asm(&self) -> String {
         match self {
-            Instruction::Mov(dest_register, from_register) => format!(
+            Instruction::Mov(left_operand, right_operand) => format!(
                 "mov {}, {}",
-                dest_register.to_asm_label(),
-                from_register.to_asm_label()
+                left_operand.to_asm_label(),
+                right_operand.to_asm_label()
             ),
         }
     }
@@ -378,7 +391,7 @@ mod tests {
     #[test]
     fn test_instruction_stringify_registers() {
         let instruction = Instruction::Mov(
-            Register::C(RegisterPart::All),
+            LeftMovOperand::Register(Register::C(RegisterPart::All)),
             MovOperand::Register(Register::B(RegisterPart::All)),
         );
         assert_eq!(instruction.to_asm(), "mov cx, bx".to_string());
@@ -390,7 +403,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::C(RegisterPart::All),
+                LeftMovOperand::Register(Register::C(RegisterPart::All)),
                 MovOperand::Register(Register::B(RegisterPart::All)),
             )
         );
@@ -402,7 +415,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::SI,
+                LeftMovOperand::Register(Register::SI),
                 MovOperand::Register(Register::B(RegisterPart::All))
             )
         )
@@ -414,7 +427,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::C(RegisterPart::Low),
+                LeftMovOperand::Register(Register::C(RegisterPart::Low)),
                 MovOperand::Immediate(Immediate::EightBit(12))
             )
         )
@@ -425,7 +438,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::C(RegisterPart::All),
+                LeftMovOperand::Register(Register::C(RegisterPart::All)),
                 MovOperand::Immediate(Immediate::SixteenBit(12))
             )
         )
@@ -436,7 +449,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::A(RegisterPart::Low),
+                LeftMovOperand::Register(Register::A(RegisterPart::Low)),
                 MovOperand::EffAddCalculation(EffAddCalculation::BxSi)
             )
         )
@@ -447,7 +460,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::A(RegisterPart::High),
+                LeftMovOperand::Register(Register::A(RegisterPart::High)),
                 MovOperand::EffAddCalculationWithDisplacement(
                     EffAddCalculation::BxSi,
                     Displacement::EightBit(4)
@@ -461,7 +474,7 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                Register::A(RegisterPart::Low),
+                LeftMovOperand::Register(Register::A(RegisterPart::Low)),
                 MovOperand::EffAddCalculationWithDisplacement(
                     EffAddCalculation::BxSi,
                     Displacement::SixteenBit(4999)
@@ -469,4 +482,18 @@ mod tests {
             )
         )
     }
+    // #[test]
+    // fn test_parse_mov_destination_address_calculation() {
+    //     let machine_code = &[0x89, 0x09];
+    //     assert_eq!(
+    //         get_single_dissasembled_instruction(machine_code),
+    //         Instruction::Mov(
+    //             Register::A(RegisterPart::Low),
+    //             MovOperand::EffAddCalculationWithDisplacement(
+    //                 EffAddCalculation::BxSi,
+    //                 Displacement::SixteenBit(4999)
+    //             )
+    //         )
+    //     )
+    // }
 }
