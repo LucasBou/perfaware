@@ -60,6 +60,16 @@ impl InstructionParser {
                     ));
                 }
 
+                if mod_field == 0 {
+                    self.state = InParsingInstruction::Start;
+                    return Some(Instruction::Mov(
+                        reg_field_to_reg(reg_field, w_flag),
+                        MovOperand::EffAddCalculation(rm_field_to_effective_address_calculation(
+                            rm_field,
+                        )),
+                    ));
+                }
+
                 self.state = InParsingInstruction::MovRegReg2(
                     d_flag, w_flag, mod_field, reg_field, rm_field,
                 );
@@ -117,6 +127,7 @@ fn u16_from_two_switched_u8(low_byte: u8, high_byte: u8) -> u16 {
 enum MovOperand {
     Register(Register),
     Immediate(Immediate),
+    EffAddCalculation(EffAddCalculation),
 }
 
 impl MovOperand {
@@ -124,6 +135,7 @@ impl MovOperand {
         match self {
             MovOperand::Register(register) => register.to_asm_label(),
             MovOperand::Immediate(immediate) => immediate.to_asm_label(),
+            MovOperand::EffAddCalculation(calc) => calc.to_asm_label(),
         }
     }
 }
@@ -140,6 +152,46 @@ impl Immediate {
             Immediate::EightBit(value) => format!("{}", value),
             Immediate::SixteenBit(value) => format!("{}", value),
         }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum EffAddCalculation {
+    BxSi,
+    BxDi,
+    BpSi,
+    BpDi,
+    Si,
+    Di,
+    Bx,
+}
+
+impl EffAddCalculation {
+    fn to_asm_label(&self) -> String {
+        let addends = match self {
+            EffAddCalculation::BxSi => "bx + si",
+            EffAddCalculation::BxDi => "bx + di",
+            EffAddCalculation::BpSi => "bp + si",
+            EffAddCalculation::BpDi => "bp + di",
+            EffAddCalculation::Si => "si",
+            EffAddCalculation::Di => "di",
+            EffAddCalculation::Bx => todo!(),
+        };
+        format!("[{}]", addends)
+    }
+}
+
+fn rm_field_to_effective_address_calculation(rm_field: u8) -> EffAddCalculation {
+    match rm_field {
+        0 => EffAddCalculation::BxSi,
+        1 => EffAddCalculation::BxDi,
+        2 => EffAddCalculation::BpSi,
+        3 => EffAddCalculation::BpDi,
+        4 => EffAddCalculation::Si,
+        5 => EffAddCalculation::Di,
+        6 => panic!("DIRECT ADRESS RM FIELD"),
+        7 => EffAddCalculation::Bx,
+        _ => unreachable!("rm field cannot be higher than 7. Was that field parsed correctly ?"),
     }
 }
 
@@ -345,6 +397,17 @@ mod tests {
             Instruction::Mov(
                 Register::C(RegisterPart::All),
                 MovOperand::Immediate(Immediate::SixteenBit(12))
+            )
+        )
+    }
+    #[test]
+    fn test_parse_mov_source_address_calculation() {
+        let machine_code = &[0x8A, 0x00, 0x8B];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                Register::A(RegisterPart::Low),
+                MovOperand::EffAddCalculation(EffAddCalculation::BxSi)
             )
         )
     }
