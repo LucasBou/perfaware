@@ -75,13 +75,24 @@ impl InstructionParser {
                 );
                 None
             }
-            InParsingInstruction::MovRegReg2(
-                _d_flag,
-                _w_flag,
-                _mod_field,
-                _reg_field,
-                _rm_field,
-            ) => {
+            InParsingInstruction::MovRegReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
+                if mod_field == 1 {
+                    self.state = InParsingInstruction::Start;
+                    return Some(Instruction::Mov(
+                        reg_field_to_reg(reg_field, w_flag),
+                        MovOperand::EffAddCalculationWithDisplacement(
+                            rm_field_to_effective_address_calculation(rm_field),
+                            Displacement::EightBit(byte),
+                        ),
+                    ));
+                }
+
+                if mod_field == 2 {
+                    self.state = InParsingInstruction::MovRegReg3(
+                        d_flag, w_flag, mod_field, reg_field, rm_field, byte,
+                    );
+                    return None;
+                }
                 unreachable!()
             }
             InParsingInstruction::MovRegReg3(
@@ -128,6 +139,13 @@ enum MovOperand {
     Register(Register),
     Immediate(Immediate),
     EffAddCalculation(EffAddCalculation),
+    EffAddCalculationWithDisplacement(EffAddCalculation, Displacement),
+}
+
+#[derive(Debug, PartialEq)]
+enum Displacement {
+    EightBit(u8),
+    SixteenBit(u16),
 }
 
 impl MovOperand {
@@ -136,6 +154,9 @@ impl MovOperand {
             MovOperand::Register(register) => register.to_asm_label(),
             MovOperand::Immediate(immediate) => immediate.to_asm_label(),
             MovOperand::EffAddCalculation(calc) => calc.to_asm_label(),
+            MovOperand::EffAddCalculationWithDisplacement(eff_add_calculation, displacement) => {
+                todo!()
+            }
         }
     }
 }
@@ -163,6 +184,7 @@ enum EffAddCalculation {
     BpDi,
     Si,
     Di,
+    Bp,
     Bx,
 }
 
@@ -175,7 +197,8 @@ impl EffAddCalculation {
             EffAddCalculation::BpDi => "bp + di",
             EffAddCalculation::Si => "si",
             EffAddCalculation::Di => "di",
-            EffAddCalculation::Bx => todo!(),
+            EffAddCalculation::Bp => "bp",
+            EffAddCalculation::Bx => "bx",
         };
         format!("[{}]", addends)
     }
@@ -189,7 +212,7 @@ fn rm_field_to_effective_address_calculation(rm_field: u8) -> EffAddCalculation 
         3 => EffAddCalculation::BpDi,
         4 => EffAddCalculation::Si,
         5 => EffAddCalculation::Di,
-        6 => panic!("DIRECT ADRESS RM FIELD"),
+        6 => EffAddCalculation::Bp,
         7 => EffAddCalculation::Bx,
         _ => unreachable!("rm field cannot be higher than 7. Was that field parsed correctly ?"),
     }
@@ -402,12 +425,26 @@ mod tests {
     }
     #[test]
     fn test_parse_mov_source_address_calculation() {
-        let machine_code = &[0x8A, 0x00, 0x8B];
+        let machine_code = &[0x8A, 0x00];
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
                 Register::A(RegisterPart::Low),
                 MovOperand::EffAddCalculation(EffAddCalculation::BxSi)
+            )
+        )
+    }
+    #[test]
+    fn test_parse_mov_source_address_calculation_with_8_bit_displacement() {
+        let machine_code = &[0x8A, 0x60, 0x04];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                Register::A(RegisterPart::High),
+                MovOperand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::BxSi,
+                    Displacement::EightBit(4)
+                )
             )
         )
     }
