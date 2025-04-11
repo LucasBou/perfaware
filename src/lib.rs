@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::{fmt::format, ops::BitAnd};
+use std::ops::BitAnd;
 
 #[derive(Debug)]
 enum InParsingInstruction {
@@ -86,13 +86,17 @@ impl InstructionParser {
             InParsingInstruction::MovRegReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
                 if mod_field == 1 {
                     self.state = InParsingInstruction::Start;
-                    return Some(Instruction::Mov(
-                        MovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
-                        MovOperand::EffAddCalculationWithDisplacement(
-                            rm_field_to_effective_address_calculation(rm_field),
-                            Displacement::EightBit(byte),
-                        ),
-                    ));
+                    let register = MovOperand::Register(reg_field_to_reg(reg_field, w_flag));
+                    let eff_add_calculation = MovOperand::EffAddCalculationWithDisplacement(
+                        rm_field_to_effective_address_calculation(rm_field),
+                        Displacement::EightBit(byte),
+                    );
+                    let (dest, source) = if d_flag {
+                        (register, eff_add_calculation)
+                    } else {
+                        (eff_add_calculation, register)
+                    };
+                    return Some(Instruction::Mov(dest, source));
                 }
 
                 if mod_field == 2 {
@@ -172,15 +176,15 @@ impl Displacement {
     }
 
     fn is_zero(&self) -> bool {
-        match self {
-            Displacement::EightBit(0) => true,
-            Displacement::SixteenBit(0) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Displacement::EightBit(0) | Displacement::SixteenBit(0)
+        )
     }
 }
 
 impl MovOperand {
+    #[allow(clippy::to_string_in_format_args)]
     fn to_asm_label(&self) -> String {
         match self {
             MovOperand::Register(register) => register.to_asm_label(),
@@ -515,15 +519,18 @@ mod tests {
             )
         )
     }
-    // #[test]
-    // fn test_parse_mov_destination_address_calculation_with_bp() {
-    //     let machine_code = &[0x88, 0x6E, 0x00];
-    //     assert_eq!(
-    //         get_single_dissasembled_instruction(machine_code),
-    //         Instruction::Mov(
-    //             MovOperand::EffAddCalculation(EffAddCalculation::Bp),
-    //             MovOperand::Register(Register::C(RegisterPart::High))
-    //         )
-    //     )
-    // }
+    #[test]
+    fn test_parse_mov_destination_address_calculation_with_bp() {
+        let machine_code = &[0x88, 0x6E, 0x00];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                MovOperand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::Bp,
+                    Displacement::EightBit(0)
+                ),
+                MovOperand::Register(Register::C(RegisterPart::High))
+            )
+        )
+    }
 }

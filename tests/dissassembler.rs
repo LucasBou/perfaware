@@ -57,11 +57,11 @@ fn test_second_listing_with_nasm() {
     let input_file = "tests/data/listing_0038_many_register_mov";
     assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file);
 }
-// #[test]
-// fn test_third_listing_with_nasm() {
-//     let input_file = "tests/data/listing_0039_more_movs";
-//     assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file);
-// }
+#[test]
+fn test_third_listing_with_nasm() {
+    let input_file = "tests/data/listing_0039_more_movs";
+    assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file);
+}
 #[test]
 fn test_first_listing() {
     let input_file = "tests/data/listing_0037_single_register_mov";
