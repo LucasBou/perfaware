@@ -96,14 +96,21 @@ impl InstructionParser {
                 unreachable!()
             }
             InParsingInstruction::MovRegReg3(
-                _d_flag,
-                _w_flag,
-                _mod_field,
-                _reg_field,
-                _rm_field,
-                _disp_low,
+                d_flag,
+                w_flag,
+                mod_field,
+                reg_field,
+                rm_field,
+                disp_low,
             ) => {
-                unreachable!()
+                self.state = InParsingInstruction::Start;
+                Some(Instruction::Mov(
+                    reg_field_to_reg(reg_field, w_flag),
+                    MovOperand::EffAddCalculationWithDisplacement(
+                        rm_field_to_effective_address_calculation(rm_field),
+                        Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, byte)),
+                    ),
+                ))
             }
             InParsingInstruction::MovImmtoReg1(w_flag, reg_field) => {
                 if !w_flag {
@@ -444,6 +451,20 @@ mod tests {
                 MovOperand::EffAddCalculationWithDisplacement(
                     EffAddCalculation::BxSi,
                     Displacement::EightBit(4)
+                )
+            )
+        )
+    }
+    #[test]
+    fn test_parse_mov_source_address_calculation_with_16_bit_displacement() {
+        let machine_code = &[0x8A, 0x80, 0x87, 0x13];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                Register::A(RegisterPart::Low),
+                MovOperand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::BxSi,
+                    Displacement::SixteenBit(4999)
                 )
             )
         )
