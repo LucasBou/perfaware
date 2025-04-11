@@ -62,12 +62,20 @@ impl InstructionParser {
 
                 if mod_field == 0 {
                     self.state = InParsingInstruction::Start;
-                    return Some(Instruction::Mov(
-                        LeftMovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
-                        MovOperand::EffAddCalculation(rm_field_to_effective_address_calculation(
-                            rm_field,
-                        )),
-                    ));
+                    let eff_add_calc = rm_field_to_effective_address_calculation(rm_field);
+                    let register = reg_field_to_reg(reg_field, w_flag);
+                    let (left_operand, right_operand) = if !d_flag {
+                        (
+                            LeftMovOperand::EffAddCalculation(eff_add_calc),
+                            MovOperand::Register(register),
+                        )
+                    } else {
+                        (
+                            LeftMovOperand::Register(register),
+                            MovOperand::EffAddCalculation(eff_add_calc),
+                        )
+                    };
+                    return Some(Instruction::Mov(left_operand, right_operand));
                 }
 
                 self.state = InParsingInstruction::MovRegReg2(
@@ -144,12 +152,16 @@ fn u16_from_two_switched_u8(low_byte: u8, high_byte: u8) -> u16 {
 #[derive(Debug, PartialEq)]
 enum LeftMovOperand {
     Register(Register),
+    EffAddCalculation(EffAddCalculation),
 }
 
 impl LeftMovOperand {
     fn to_asm_label(&self) -> String {
         match self {
             LeftMovOperand::Register(register) => register.to_asm_label(),
+            LeftMovOperand::EffAddCalculation(eff_add_calculation) => {
+                eff_add_calculation.to_asm_label()
+            }
         }
     }
 }
@@ -482,18 +494,15 @@ mod tests {
             )
         )
     }
-    // #[test]
-    // fn test_parse_mov_destination_address_calculation() {
-    //     let machine_code = &[0x89, 0x09];
-    //     assert_eq!(
-    //         get_single_dissasembled_instruction(machine_code),
-    //         Instruction::Mov(
-    //             Register::A(RegisterPart::Low),
-    //             MovOperand::EffAddCalculationWithDisplacement(
-    //                 EffAddCalculation::BxSi,
-    //                 Displacement::SixteenBit(4999)
-    //             )
-    //         )
-    //     )
-    // }
+    #[test]
+    fn test_parse_mov_destination_address_calculation() {
+        let machine_code = &[0x89, 0x09];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                LeftMovOperand::EffAddCalculation(EffAddCalculation::BxDi),
+                MovOperand::Register(Register::C(RegisterPart::All))
+            )
+        )
+    }
 }
