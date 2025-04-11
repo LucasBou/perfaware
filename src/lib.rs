@@ -1,12 +1,16 @@
 #![allow(dead_code)]
 use std::ops::BitAnd;
 
+#[derive(Debug)]
 enum InParsingInstruction {
     Start,
     MovMemReg1(bool, bool),
     MovRegReg2(bool, bool, u8, u8, u8),
     MovRegReg3(bool, bool, u8, u8, u8, u8),
     MovRegReg4(bool, bool, u8, u8, u8, u8, u8),
+    MovImmtoReg1(bool, u8),
+    MovImmtoReg2(bool, u8, u8),
+    MovImmtoReg3(bool, u8, u8, u8),
 }
 
 struct InstructionParser {
@@ -29,8 +33,15 @@ impl InstructionParser {
                         byte.bitand(1) == 1,
                     );
                     None
-                } else {
+                } else if byte.bitand(0b11110000) == 0b10110000 {
+                    self.state =
+                        InParsingInstruction::MovImmtoReg1(byte.bitand(8) == 8, byte.bitand(7));
                     None
+                } else {
+                    panic!(
+                        "Unknown starting byte sequence {:08b} with state {:?}",
+                        byte, self.state
+                    )
                 }
             }
             InParsingInstruction::MovMemReg1(d_flag, w_flag) => {
@@ -80,6 +91,19 @@ impl InstructionParser {
             ) => {
                 unreachable!()
             }
+            InParsingInstruction::MovImmtoReg1(w_flag, reg_field) => {
+                if !w_flag {
+                    return Some(Instruction::Mov(
+                        reg_field_to_reg(reg_field, w_flag),
+                        MovOperand::Immediate(Immediate::EightBit(byte)),
+                    ));
+                } else {
+                    self.state = InParsingInstruction::MovImmtoReg2(w_flag, reg_field, byte);
+                    None
+                }
+            }
+            InParsingInstruction::MovImmtoReg2(_, _, _) => todo!(),
+            InParsingInstruction::MovImmtoReg3(_, _, _, _) => todo!(),
         }
     }
 }
@@ -297,15 +321,15 @@ mod tests {
         )
     }
 
-    // #[test]
-    // fn test_parse_mov_8bit_immediate_to_register() {
-    //     let machine_code = &[0xB1, 0x0C];
-    //     assert_eq!(
-    //         get_single_dissasembled_instruction(machine_code),
-    //         Instruction::Mov(
-    //             Register::C(RegisterPart::Low),
-    //             MovOperand::Immediate(Immediate::EightBit(12))
-    //         )
-    //     )
-    // }
+    #[test]
+    fn test_parse_mov_8bit_immediate_to_register() {
+        let machine_code = &[0xB1, 0x0C];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                Register::C(RegisterPart::Low),
+                MovOperand::Immediate(Immediate::EightBit(12))
+            )
+        )
+    }
 }
