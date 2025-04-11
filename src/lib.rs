@@ -65,26 +65,32 @@ impl InstructionParser {
                 );
                 None
             }
-            InParsingInstruction::MovRegReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
+            InParsingInstruction::MovRegReg2(
+                _d_flag,
+                _w_flag,
+                _mod_field,
+                _reg_field,
+                _rm_field,
+            ) => {
                 unreachable!()
             }
             InParsingInstruction::MovRegReg3(
-                d_flag,
-                w_flag,
-                mod_field,
-                reg_field,
-                rm_field,
-                disp_low,
+                _d_flag,
+                _w_flag,
+                _mod_field,
+                _reg_field,
+                _rm_field,
+                _disp_low,
             ) => {
                 unreachable!()
             }
             InParsingInstruction::MovImmtoReg1(w_flag, reg_field) => {
                 if !w_flag {
                     self.state = InParsingInstruction::Start;
-                    return Some(Instruction::Mov(
+                    Some(Instruction::Mov(
                         reg_field_to_reg(reg_field, w_flag),
                         MovOperand::Immediate(Immediate::EightBit(byte)),
-                    ));
+                    ))
                 } else {
                     self.state = InParsingInstruction::MovImmtoReg2(w_flag, reg_field, byte);
                     None
