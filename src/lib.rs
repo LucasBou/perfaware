@@ -47,7 +47,7 @@ impl InstructionParser {
                     };
                     return Some(Instruction::Mov(
                         reg_field_to_reg(dest_reg_field, w_flag),
-                        reg_field_to_reg(from_reg_field, w_flag),
+                        MovOperand::Register(reg_field_to_reg(from_reg_field, w_flag)),
                     ));
                 }
 
@@ -85,8 +85,38 @@ impl InstructionParser {
 }
 
 #[derive(Debug, PartialEq)]
+enum MovOperand {
+    Register(Register),
+    Immediate(Immediate),
+}
+
+impl MovOperand {
+    fn to_asm_label(&self) -> String {
+        match self {
+            MovOperand::Register(register) => register.to_asm_label(),
+            MovOperand::Immediate(immediate) => immediate.to_asm_label(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Immediate {
+    EightBit(u8),
+    SixteenBit(u16),
+}
+
+impl Immediate {
+    fn to_asm_label(&self) -> String {
+        match self {
+            Immediate::EightBit(value) => format!("{}", value),
+            Immediate::SixteenBit(value) => format!("{}", value),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 enum Instruction {
-    Mov(Register, Register),
+    Mov(Register, MovOperand),
 }
 
 impl Instruction {
@@ -230,24 +260,52 @@ fn reg_field_to_reg(regfield: u8, w_flag: bool) -> Register {
 mod tests {
     use super::*;
 
+    fn get_single_dissasembled_instruction(machine_code: &[u8]) -> Instruction {
+        dissassemble(machine_code).into_iter().next().unwrap()
+    }
+
     #[test]
-    fn test_asm_serialisation_basic() {
+    fn test_instruction_stringify_registers() {
         let instruction = Instruction::Mov(
             Register::C(RegisterPart::All),
-            Register::B(RegisterPart::All),
+            MovOperand::Register(Register::B(RegisterPart::All)),
         );
         assert_eq!(instruction.to_asm(), "mov cx, bx".to_string());
     }
 
     #[test]
-    fn test_instruction_parser_basic() {
+    fn test_parse_register_to_register_mov() {
         let machine_code = &[0b10001011_u8, 0b11001011_u8];
         assert_eq!(
-            dissassemble(machine_code)[0],
+            get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
                 Register::C(RegisterPart::All),
-                Register::B(RegisterPart::All),
+                MovOperand::Register(Register::B(RegisterPart::All)),
             )
         );
     }
+
+    #[test]
+    fn test_parse_special_register_to_register_mov() {
+        let machine_code = &[0x89, 0xDE];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Mov(
+                Register::SI,
+                MovOperand::Register(Register::B(RegisterPart::All))
+            )
+        )
+    }
+
+    // #[test]
+    // fn test_parse_mov_8bit_immediate_to_register() {
+    //     let machine_code = &[0xB1, 0x0C];
+    //     assert_eq!(
+    //         get_single_dissasembled_instruction(machine_code),
+    //         Instruction::Mov(
+    //             Register::C(RegisterPart::Low),
+    //             MovOperand::Immediate(Immediate::EightBit(12))
+    //         )
+    //     )
+    // }
 }
