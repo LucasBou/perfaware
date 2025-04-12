@@ -685,4 +685,18 @@ mod tests {
             )
         )
     }
+    #[test]
+    fn test_parse_last_add() {
+        let machine_code = &[0x01, 0x7B, 0x06];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::BpDi,
+                    Displacement::EightBit(6)
+                ),
+                Operand::Register(Register::DI)
+            )
+        )
+    }
 }
