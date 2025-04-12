@@ -50,45 +50,19 @@ impl InstructionParser {
                 }
             }
             InParsingInstruction::MovMemReg1(d_flag, w_flag) => {
-                let mod_field = byte.bitand(0b11000000) >> 6;
-                let reg_field = byte.bitand(0b00111000) >> 3;
-                let rm_field = byte.bitand(0b00000111);
-
-                if (mod_field == 0b11) | ((mod_field == 0b00) & (rm_field == 0b110)) {
-                    self.state = InParsingInstruction::Start;
-                    let (dest_reg_field, from_reg_field) = if d_flag {
-                        (reg_field, rm_field)
-                    } else {
-                        (rm_field, reg_field)
-                    };
-                    return Some(Instruction::Mov(
-                        Operand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
-                        Operand::Register(reg_field_to_reg(from_reg_field, w_flag)),
-                    ));
+                let (mod_field, reg_field, rm_field) = mod_reg_rm_from_byte(byte);
+                match operands_from_mod_reg_rm(d_flag, w_flag, mod_field, reg_field, rm_field) {
+                    SecondByteProcess::NoMore(left_operand, right_operand) => {
+                        self.state = InParsingInstruction::Start;
+                        Some(Instruction::Mov(left_operand, right_operand))
+                    }
+                    SecondByteProcess::NeedsMore => {
+                        self.state = InParsingInstruction::MovRegReg2(
+                            d_flag, w_flag, mod_field, reg_field, rm_field,
+                        );
+                        None
+                    }
                 }
-
-                if mod_field == 0 {
-                    self.state = InParsingInstruction::Start;
-                    let eff_add_calc = rm_field_to_effective_address_calculation(rm_field);
-                    let register = reg_field_to_reg(reg_field, w_flag);
-                    let (left_operand, right_operand) = if !d_flag {
-                        (
-                            Operand::EffAddCalculation(eff_add_calc),
-                            Operand::Register(register),
-                        )
-                    } else {
-                        (
-                            Operand::Register(register),
-                            Operand::EffAddCalculation(eff_add_calc),
-                        )
-                    };
-                    return Some(Instruction::Mov(left_operand, right_operand));
-                }
-
-                self.state = InParsingInstruction::MovRegReg2(
-                    d_flag, w_flag, mod_field, reg_field, rm_field,
-                );
-                None
             }
             InParsingInstruction::MovRegReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
                 if mod_field == 1 {
@@ -153,50 +127,75 @@ impl InstructionParser {
                 ))
             }
             InParsingInstruction::AddRMwReg1(d_flag, w_flag) => {
-                let mod_field = byte.bitand(0b11000000) >> 6;
-                let reg_field = byte.bitand(0b00111000) >> 3;
-                let rm_field = byte.bitand(0b00000111);
-
-                if (mod_field == 0b11) | ((mod_field == 0b00) & (rm_field == 0b110)) {
-                    self.state = InParsingInstruction::Start;
-                    let (dest_reg_field, from_reg_field) = if d_flag {
-                        (reg_field, rm_field)
-                    } else {
-                        (rm_field, reg_field)
-                    };
-                    return Some(Instruction::Add(
-                        Operand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
-                        Operand::Register(reg_field_to_reg(from_reg_field, w_flag)),
-                    ));
+                let (mod_field, reg_field, rm_field) = mod_reg_rm_from_byte(byte);
+                match operands_from_mod_reg_rm(d_flag, w_flag, mod_field, reg_field, rm_field) {
+                    SecondByteProcess::NoMore(left_operand, right_operand) => {
+                        self.state = InParsingInstruction::Start;
+                        Some(Instruction::Add(left_operand, right_operand))
+                    }
+                    SecondByteProcess::NeedsMore => {
+                        self.state = InParsingInstruction::AddRMwReg2(
+                            d_flag, w_flag, mod_field, reg_field, rm_field,
+                        );
+                        None
+                    }
                 }
-
-                if mod_field == 0 {
-                    self.state = InParsingInstruction::Start;
-                    let eff_add_calc = rm_field_to_effective_address_calculation(rm_field);
-                    let register = reg_field_to_reg(reg_field, w_flag);
-                    let (left_operand, right_operand) = if !d_flag {
-                        (
-                            Operand::EffAddCalculation(eff_add_calc),
-                            Operand::Register(register),
-                        )
-                    } else {
-                        (
-                            Operand::Register(register),
-                            Operand::EffAddCalculation(eff_add_calc),
-                        )
-                    };
-                    return Some(Instruction::Add(left_operand, right_operand));
-                }
-
-                self.state = InParsingInstruction::AddRMwReg2(
-                    d_flag, w_flag, mod_field, reg_field, rm_field,
-                );
-                None
             }
             InParsingInstruction::AddRMwReg2(_, _, _, _, _) => todo!(),
             InParsingInstruction::AddRMwReg3(_, _, _, _, _, _) => todo!(),
         }
     }
+}
+
+enum SecondByteProcess {
+    NoMore(Operand, Operand),
+    NeedsMore,
+}
+
+fn operands_from_mod_reg_rm(
+    d_flag: bool,
+    w_flag: bool,
+    mod_field: u8,
+    reg_field: u8,
+    rm_field: u8,
+) -> SecondByteProcess {
+    if (mod_field == 0b11) | ((mod_field == 0b00) & (rm_field == 0b110)) {
+        let (dest_reg_field, from_reg_field) = if d_flag {
+            (reg_field, rm_field)
+        } else {
+            (rm_field, reg_field)
+        };
+        return SecondByteProcess::NoMore(
+            Operand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
+            Operand::Register(reg_field_to_reg(from_reg_field, w_flag)),
+        );
+    }
+
+    if mod_field == 0 {
+        let eff_add_calc = rm_field_to_effective_address_calculation(rm_field);
+        let register = reg_field_to_reg(reg_field, w_flag);
+        let (left_operand, right_operand) = if !d_flag {
+            (
+                Operand::EffAddCalculation(eff_add_calc),
+                Operand::Register(register),
+            )
+        } else {
+            (
+                Operand::Register(register),
+                Operand::EffAddCalculation(eff_add_calc),
+            )
+        };
+        return SecondByteProcess::NoMore(left_operand, right_operand);
+    }
+
+    SecondByteProcess::NeedsMore
+}
+
+fn mod_reg_rm_from_byte(byte: u8) -> (u8, u8, u8) {
+    let mod_field = byte.bitand(0b11000000) >> 6;
+    let reg_field = byte.bitand(0b00111000) >> 3;
+    let rm_field = byte.bitand(0b00000111);
+    (mod_field, reg_field, rm_field)
 }
 
 fn u16_from_two_switched_u8(low_byte: u8, high_byte: u8) -> u16 {
