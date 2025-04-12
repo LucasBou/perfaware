@@ -9,6 +9,9 @@ enum InParsingInstruction {
     MovRegReg3(bool, bool, u8, u8, u8, u8),
     MovImmtoReg1(bool, u8),
     MovImmtoReg2(bool, u8, u8),
+    AddRMwReg1(bool, bool),
+    AddRMwReg2(bool, bool, u8, u8, u8),
+    AddRMwReg3(bool, bool, u8, u8, u8, u8),
 }
 
 struct InstructionParser {
@@ -35,6 +38,10 @@ impl InstructionParser {
                     self.state =
                         InParsingInstruction::MovImmtoReg1(byte.bitand(8) == 8, byte.bitand(7));
                     None
+                } else if byte.bitand(0b11111100) == 0 {
+                    self.state =
+                        InParsingInstruction::AddRMwReg1(byte.bitand(2) == 2, byte.bitand(1) == 1);
+                    None
                 } else {
                     panic!(
                         "Unknown starting byte sequence {:08b} with state {:?}",
@@ -55,8 +62,8 @@ impl InstructionParser {
                         (rm_field, reg_field)
                     };
                     return Some(Instruction::Mov(
-                        MovOperand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
-                        MovOperand::Register(reg_field_to_reg(from_reg_field, w_flag)),
+                        Operand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
+                        Operand::Register(reg_field_to_reg(from_reg_field, w_flag)),
                     ));
                 }
 
@@ -66,13 +73,13 @@ impl InstructionParser {
                     let register = reg_field_to_reg(reg_field, w_flag);
                     let (left_operand, right_operand) = if !d_flag {
                         (
-                            MovOperand::EffAddCalculation(eff_add_calc),
-                            MovOperand::Register(register),
+                            Operand::EffAddCalculation(eff_add_calc),
+                            Operand::Register(register),
                         )
                     } else {
                         (
-                            MovOperand::Register(register),
-                            MovOperand::EffAddCalculation(eff_add_calc),
+                            Operand::Register(register),
+                            Operand::EffAddCalculation(eff_add_calc),
                         )
                     };
                     return Some(Instruction::Mov(left_operand, right_operand));
@@ -86,8 +93,8 @@ impl InstructionParser {
             InParsingInstruction::MovRegReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
                 if mod_field == 1 {
                     self.state = InParsingInstruction::Start;
-                    let register = MovOperand::Register(reg_field_to_reg(reg_field, w_flag));
-                    let eff_add_calculation = MovOperand::EffAddCalculationWithDisplacement(
+                    let register = Operand::Register(reg_field_to_reg(reg_field, w_flag));
+                    let eff_add_calculation = Operand::EffAddCalculationWithDisplacement(
                         rm_field_to_effective_address_calculation(rm_field),
                         Displacement::EightBit(byte),
                     );
@@ -117,8 +124,8 @@ impl InstructionParser {
             ) => {
                 self.state = InParsingInstruction::Start;
                 Some(Instruction::Mov(
-                    MovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
-                    MovOperand::EffAddCalculationWithDisplacement(
+                    Operand::Register(reg_field_to_reg(reg_field, w_flag)),
+                    Operand::EffAddCalculationWithDisplacement(
                         rm_field_to_effective_address_calculation(rm_field),
                         Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, byte)),
                     ),
@@ -128,8 +135,8 @@ impl InstructionParser {
                 if !w_flag {
                     self.state = InParsingInstruction::Start;
                     Some(Instruction::Mov(
-                        MovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
-                        MovOperand::Immediate(Immediate::EightBit(byte)),
+                        Operand::Register(reg_field_to_reg(reg_field, w_flag)),
+                        Operand::Immediate(Immediate::EightBit(byte)),
                     ))
                 } else {
                     self.state = InParsingInstruction::MovImmtoReg2(w_flag, reg_field, byte);
@@ -139,12 +146,55 @@ impl InstructionParser {
             InParsingInstruction::MovImmtoReg2(w_flag, reg_field, low_byte) => {
                 self.state = InParsingInstruction::Start;
                 Some(Instruction::Mov(
-                    MovOperand::Register(reg_field_to_reg(reg_field, w_flag)),
-                    MovOperand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(
+                    Operand::Register(reg_field_to_reg(reg_field, w_flag)),
+                    Operand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(
                         low_byte, byte,
                     ))),
                 ))
             }
+            InParsingInstruction::AddRMwReg1(d_flag, w_flag) => {
+                let mod_field = byte.bitand(0b11000000) >> 6;
+                let reg_field = byte.bitand(0b00111000) >> 3;
+                let rm_field = byte.bitand(0b00000111);
+
+                if (mod_field == 0b11) | ((mod_field == 0b00) & (rm_field == 0b110)) {
+                    self.state = InParsingInstruction::Start;
+                    let (dest_reg_field, from_reg_field) = if d_flag {
+                        (reg_field, rm_field)
+                    } else {
+                        (rm_field, reg_field)
+                    };
+                    return Some(Instruction::Add(
+                        Operand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
+                        Operand::Register(reg_field_to_reg(from_reg_field, w_flag)),
+                    ));
+                }
+
+                if mod_field == 0 {
+                    self.state = InParsingInstruction::Start;
+                    let eff_add_calc = rm_field_to_effective_address_calculation(rm_field);
+                    let register = reg_field_to_reg(reg_field, w_flag);
+                    let (left_operand, right_operand) = if !d_flag {
+                        (
+                            Operand::EffAddCalculation(eff_add_calc),
+                            Operand::Register(register),
+                        )
+                    } else {
+                        (
+                            Operand::Register(register),
+                            Operand::EffAddCalculation(eff_add_calc),
+                        )
+                    };
+                    return Some(Instruction::Add(left_operand, right_operand));
+                }
+
+                self.state = InParsingInstruction::AddRMwReg2(
+                    d_flag, w_flag, mod_field, reg_field, rm_field,
+                );
+                None
+            }
+            InParsingInstruction::AddRMwReg2(_, _, _, _, _) => todo!(),
+            InParsingInstruction::AddRMwReg3(_, _, _, _, _, _) => todo!(),
         }
     }
 }
@@ -154,7 +204,7 @@ fn u16_from_two_switched_u8(low_byte: u8, high_byte: u8) -> u16 {
 }
 
 #[derive(Debug, PartialEq)]
-enum MovOperand {
+enum Operand {
     Register(Register),
     Immediate(Immediate),
     EffAddCalculation(EffAddCalculation),
@@ -183,14 +233,14 @@ impl Displacement {
     }
 }
 
-impl MovOperand {
+impl Operand {
     #[allow(clippy::to_string_in_format_args)]
     fn to_asm_label(&self) -> String {
         match self {
-            MovOperand::Register(register) => register.to_asm_label(),
-            MovOperand::Immediate(immediate) => immediate.to_asm_label(),
-            MovOperand::EffAddCalculation(calc) => calc.to_asm_label(),
-            MovOperand::EffAddCalculationWithDisplacement(eff_add_calculation, displacement) => {
+            Operand::Register(register) => register.to_asm_label(),
+            Operand::Immediate(immediate) => immediate.to_asm_label(),
+            Operand::EffAddCalculation(calc) => calc.to_asm_label(),
+            Operand::EffAddCalculationWithDisplacement(eff_add_calculation, displacement) => {
                 if displacement.is_zero() {
                     eff_add_calculation.to_asm_label()
                 } else {
@@ -266,7 +316,8 @@ fn rm_field_to_effective_address_calculation(rm_field: u8) -> EffAddCalculation 
 
 #[derive(Debug, PartialEq)]
 enum Instruction {
-    Mov(MovOperand, MovOperand),
+    Mov(Operand, Operand),
+    Add(Operand, Operand),
 }
 
 impl Instruction {
@@ -274,6 +325,11 @@ impl Instruction {
         match self {
             Instruction::Mov(left_operand, right_operand) => format!(
                 "mov {}, {}",
+                left_operand.to_asm_label(),
+                right_operand.to_asm_label()
+            ),
+            Instruction::Add(left_operand, right_operand) => format!(
+                "add {},{}",
                 left_operand.to_asm_label(),
                 right_operand.to_asm_label()
             ),
@@ -417,8 +473,8 @@ mod tests {
     #[test]
     fn test_instruction_stringify_registers() {
         let instruction = Instruction::Mov(
-            MovOperand::Register(Register::C(RegisterPart::All)),
-            MovOperand::Register(Register::B(RegisterPart::All)),
+            Operand::Register(Register::C(RegisterPart::All)),
+            Operand::Register(Register::B(RegisterPart::All)),
         );
         assert_eq!(instruction.to_asm(), "mov cx, bx".to_string());
     }
@@ -429,8 +485,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::C(RegisterPart::All)),
-                MovOperand::Register(Register::B(RegisterPart::All)),
+                Operand::Register(Register::C(RegisterPart::All)),
+                Operand::Register(Register::B(RegisterPart::All)),
             )
         );
     }
@@ -441,8 +497,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::SI),
-                MovOperand::Register(Register::B(RegisterPart::All))
+                Operand::Register(Register::SI),
+                Operand::Register(Register::B(RegisterPart::All))
             )
         )
     }
@@ -453,8 +509,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::C(RegisterPart::Low)),
-                MovOperand::Immediate(Immediate::EightBit(12))
+                Operand::Register(Register::C(RegisterPart::Low)),
+                Operand::Immediate(Immediate::EightBit(12))
             )
         )
     }
@@ -464,8 +520,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::C(RegisterPart::All)),
-                MovOperand::Immediate(Immediate::SixteenBit(12))
+                Operand::Register(Register::C(RegisterPart::All)),
+                Operand::Immediate(Immediate::SixteenBit(12))
             )
         )
     }
@@ -475,8 +531,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::A(RegisterPart::Low)),
-                MovOperand::EffAddCalculation(EffAddCalculation::BxSi)
+                Operand::Register(Register::A(RegisterPart::Low)),
+                Operand::EffAddCalculation(EffAddCalculation::BxSi)
             )
         )
     }
@@ -486,8 +542,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::A(RegisterPart::High)),
-                MovOperand::EffAddCalculationWithDisplacement(
+                Operand::Register(Register::A(RegisterPart::High)),
+                Operand::EffAddCalculationWithDisplacement(
                     EffAddCalculation::BxSi,
                     Displacement::EightBit(4)
                 )
@@ -500,8 +556,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::Register(Register::A(RegisterPart::Low)),
-                MovOperand::EffAddCalculationWithDisplacement(
+                Operand::Register(Register::A(RegisterPart::Low)),
+                Operand::EffAddCalculationWithDisplacement(
                     EffAddCalculation::BxSi,
                     Displacement::SixteenBit(4999)
                 )
@@ -514,8 +570,8 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::EffAddCalculation(EffAddCalculation::BxDi),
-                MovOperand::Register(Register::C(RegisterPart::All))
+                Operand::EffAddCalculation(EffAddCalculation::BxDi),
+                Operand::Register(Register::C(RegisterPart::All))
             )
         )
     }
@@ -525,12 +581,35 @@ mod tests {
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
             Instruction::Mov(
-                MovOperand::EffAddCalculationWithDisplacement(
+                Operand::EffAddCalculationWithDisplacement(
                     EffAddCalculation::Bp,
                     Displacement::EightBit(0)
                 ),
-                MovOperand::Register(Register::C(RegisterPart::High))
+                Operand::Register(Register::C(RegisterPart::High))
             )
         )
     }
+
+    #[test]
+    fn test_parse_add_with_eff_add_calc() {
+        let machine_code = &[0x03, 0x18];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::B(RegisterPart::All)),
+                Operand::EffAddCalculation(EffAddCalculation::BxSi)
+            )
+        )
+    }
+    // #[test]
+    // fn test_parse_add_with_eff_add_calc_bp() {
+    //     let machine_code = &[0x03, 0x5E, 0x00];
+    //     assert_eq!(
+    //         get_single_dissasembled_instruction(machine_code),
+    //         Instruction::Add(
+    //             Operand::Register(Register::B(RegisterPart::All)),
+    //             Operand::EffAddCalculation(EffAddCalculation::Bp)
+    //         )
+    //     )
+    // }
 }
