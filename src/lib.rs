@@ -52,11 +52,11 @@ impl InstructionParser {
             InParsingInstruction::MovMemReg1(d_flag, w_flag) => {
                 let (mod_field, reg_field, rm_field) = mod_reg_rm_from_byte(byte);
                 match operands_from_mod_reg_rm(d_flag, w_flag, mod_field, reg_field, rm_field) {
-                    SecondByteProcess::NoMore(left_operand, right_operand) => {
+                    OperandsCalculationProcess::NoMore(left_operand, right_operand) => {
                         self.state = InParsingInstruction::Start;
                         Some(Instruction::Mov(left_operand, right_operand))
                     }
-                    SecondByteProcess::NeedsMore => {
+                    OperandsCalculationProcess::NeedsMore => {
                         self.state = InParsingInstruction::MovRegReg2(
                             d_flag, w_flag, mod_field, reg_field, rm_field,
                         );
@@ -65,28 +65,20 @@ impl InstructionParser {
                 }
             }
             InParsingInstruction::MovRegReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
-                if mod_field == 1 {
-                    self.state = InParsingInstruction::Start;
-                    let register = Operand::Register(reg_field_to_reg(reg_field, w_flag));
-                    let eff_add_calculation = Operand::EffAddCalculationWithDisplacement(
-                        rm_field_to_effective_address_calculation(rm_field),
-                        Displacement::EightBit(byte),
-                    );
-                    let (dest, source) = if d_flag {
-                        (register, eff_add_calculation)
-                    } else {
-                        (eff_add_calculation, register)
-                    };
-                    return Some(Instruction::Mov(dest, source));
+                match operands_from_first_displacement_byte(
+                    d_flag, w_flag, mod_field, reg_field, rm_field, byte,
+                ) {
+                    OperandsCalculationProcess::NoMore(left_operand, right_operand) => {
+                        self.state = InParsingInstruction::Start;
+                        Some(Instruction::Mov(left_operand, right_operand))
+                    }
+                    OperandsCalculationProcess::NeedsMore => {
+                        self.state = InParsingInstruction::MovRegReg3(
+                            d_flag, w_flag, mod_field, reg_field, rm_field, byte,
+                        );
+                        None
+                    }
                 }
-
-                if mod_field == 2 {
-                    self.state = InParsingInstruction::MovRegReg3(
-                        d_flag, w_flag, mod_field, reg_field, rm_field, byte,
-                    );
-                    return None;
-                }
-                unreachable!()
             }
             InParsingInstruction::MovRegReg3(
                 _d_flag,
@@ -97,13 +89,14 @@ impl InstructionParser {
                 disp_low,
             ) => {
                 self.state = InParsingInstruction::Start;
-                Some(Instruction::Mov(
-                    Operand::Register(reg_field_to_reg(reg_field, w_flag)),
-                    Operand::EffAddCalculationWithDisplacement(
-                        rm_field_to_effective_address_calculation(rm_field),
-                        Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, byte)),
-                    ),
-                ))
+                match operands_from_second_displacement_byte(
+                    _d_flag, w_flag, _mod_field, reg_field, rm_field, disp_low, byte,
+                ) {
+                    OperandsCalculationProcess::NoMore(left_operand, right_operand) => {
+                        Some(Instruction::Mov(left_operand, right_operand))
+                    }
+                    OperandsCalculationProcess::NeedsMore => unreachable!(),
+                }
             }
             InParsingInstruction::MovImmtoReg1(w_flag, reg_field) => {
                 if !w_flag {
@@ -129,11 +122,11 @@ impl InstructionParser {
             InParsingInstruction::AddRMwReg1(d_flag, w_flag) => {
                 let (mod_field, reg_field, rm_field) = mod_reg_rm_from_byte(byte);
                 match operands_from_mod_reg_rm(d_flag, w_flag, mod_field, reg_field, rm_field) {
-                    SecondByteProcess::NoMore(left_operand, right_operand) => {
+                    OperandsCalculationProcess::NoMore(left_operand, right_operand) => {
                         self.state = InParsingInstruction::Start;
                         Some(Instruction::Add(left_operand, right_operand))
                     }
-                    SecondByteProcess::NeedsMore => {
+                    OperandsCalculationProcess::NeedsMore => {
                         self.state = InParsingInstruction::AddRMwReg2(
                             d_flag, w_flag, mod_field, reg_field, rm_field,
                         );
@@ -141,13 +134,45 @@ impl InstructionParser {
                     }
                 }
             }
-            InParsingInstruction::AddRMwReg2(_, _, _, _, _) => todo!(),
-            InParsingInstruction::AddRMwReg3(_, _, _, _, _, _) => todo!(),
+            InParsingInstruction::AddRMwReg2(d_flag, w_flag, mod_field, reg_field, rm_field) => {
+                match operands_from_first_displacement_byte(
+                    d_flag, w_flag, mod_field, reg_field, rm_field, byte,
+                ) {
+                    OperandsCalculationProcess::NoMore(left_operand, right_operand) => {
+                        self.state = InParsingInstruction::Start;
+                        Some(Instruction::Add(left_operand, right_operand))
+                    }
+                    OperandsCalculationProcess::NeedsMore => {
+                        self.state = InParsingInstruction::AddRMwReg3(
+                            d_flag, w_flag, mod_field, reg_field, rm_field, byte,
+                        );
+                        None
+                    }
+                }
+            }
+            InParsingInstruction::AddRMwReg3(
+                _d_flag,
+                w_flag,
+                _mod_field,
+                reg_field,
+                rm_field,
+                disp_low,
+            ) => {
+                self.state = InParsingInstruction::Start;
+                match operands_from_second_displacement_byte(
+                    _d_flag, w_flag, _mod_field, reg_field, rm_field, disp_low, byte,
+                ) {
+                    OperandsCalculationProcess::NoMore(left_operand, right_operand) => {
+                        Some(Instruction::Add(left_operand, right_operand))
+                    }
+                    OperandsCalculationProcess::NeedsMore => unreachable!(),
+                }
+            }
         }
     }
 }
 
-enum SecondByteProcess {
+enum OperandsCalculationProcess {
     NoMore(Operand, Operand),
     NeedsMore,
 }
@@ -158,14 +183,14 @@ fn operands_from_mod_reg_rm(
     mod_field: u8,
     reg_field: u8,
     rm_field: u8,
-) -> SecondByteProcess {
+) -> OperandsCalculationProcess {
     if (mod_field == 0b11) | ((mod_field == 0b00) & (rm_field == 0b110)) {
         let (dest_reg_field, from_reg_field) = if d_flag {
             (reg_field, rm_field)
         } else {
             (rm_field, reg_field)
         };
-        return SecondByteProcess::NoMore(
+        return OperandsCalculationProcess::NoMore(
             Operand::Register(reg_field_to_reg(dest_reg_field, w_flag)),
             Operand::Register(reg_field_to_reg(from_reg_field, w_flag)),
         );
@@ -185,10 +210,56 @@ fn operands_from_mod_reg_rm(
                 Operand::EffAddCalculation(eff_add_calc),
             )
         };
-        return SecondByteProcess::NoMore(left_operand, right_operand);
+        return OperandsCalculationProcess::NoMore(left_operand, right_operand);
     }
 
-    SecondByteProcess::NeedsMore
+    OperandsCalculationProcess::NeedsMore
+}
+
+fn operands_from_first_displacement_byte(
+    d_flag: bool,
+    w_flag: bool,
+    mod_field: u8,
+    reg_field: u8,
+    rm_field: u8,
+    disp_low: u8,
+) -> OperandsCalculationProcess {
+    if mod_field == 1 {
+        let register = Operand::Register(reg_field_to_reg(reg_field, w_flag));
+        let eff_add_calculation = Operand::EffAddCalculationWithDisplacement(
+            rm_field_to_effective_address_calculation(rm_field),
+            Displacement::EightBit(disp_low),
+        );
+        let (dest, source) = if d_flag {
+            (register, eff_add_calculation)
+        } else {
+            (eff_add_calculation, register)
+        };
+        return OperandsCalculationProcess::NoMore(dest, source);
+    }
+
+    if mod_field == 2 {
+        return OperandsCalculationProcess::NeedsMore;
+    }
+    unreachable!()
+}
+
+fn operands_from_second_displacement_byte(
+    _d_flag: bool,
+    w_flag: bool,
+    _mod_field: u8,
+    reg_field: u8,
+    rm_field: u8,
+    disp_low: u8,
+    disp_high: u8,
+) -> OperandsCalculationProcess {
+    OperandsCalculationProcess::NoMore(
+        Operand::Register(reg_field_to_reg(reg_field, w_flag)),
+        Operand::EffAddCalculationWithDisplacement(
+            rm_field_to_effective_address_calculation(rm_field),
+            Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, disp_high)),
+        ),
+    )
 }
 
 fn mod_reg_rm_from_byte(byte: u8) -> (u8, u8, u8) {
@@ -600,15 +671,18 @@ mod tests {
             )
         )
     }
-    // #[test]
-    // fn test_parse_add_with_eff_add_calc_bp() {
-    //     let machine_code = &[0x03, 0x5E, 0x00];
-    //     assert_eq!(
-    //         get_single_dissasembled_instruction(machine_code),
-    //         Instruction::Add(
-    //             Operand::Register(Register::B(RegisterPart::All)),
-    //             Operand::EffAddCalculation(EffAddCalculation::Bp)
-    //         )
-    //     )
-    // }
+    #[test]
+    fn test_parse_add_with_eff_add_calc_bp() {
+        let machine_code = &[0x03, 0x5E, 0x00];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::B(RegisterPart::All)),
+                Operand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::Bp,
+                    Displacement::EightBit(0)
+                )
+            )
+        )
+    }
 }
