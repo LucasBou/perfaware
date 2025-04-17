@@ -827,4 +827,19 @@ mod tests {
             )
         )
     }
+    #[test]
+    fn test_parse_add_dest_inversed() {
+        //add ax, [bp]
+        let machine_code = &[0x03, 0x46, 0x00];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::A(RegisterPart::All)),
+                Operand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::Bp,
+                    Displacement::EightBit(0)
+                )
+            )
+        )
+    }
 }
