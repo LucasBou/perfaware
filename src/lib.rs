@@ -278,7 +278,7 @@ impl InstructionParser {
                 } else {
                     self.state = InParsingInstruction::Start;
                     Some(Instruction::Add(
-                        Operand::Register(Register::A(RegisterPart::All)),
+                        Operand::Register(Register::A(RegisterPart::Low)),
                         Operand::Immediate(Immediate::EightBit(byte)),
                     ))
                 }
@@ -887,6 +887,18 @@ mod tests {
             Instruction::Add(
                 Operand::Register(Register::A(RegisterPart::All)),
                 Operand::Immediate(Immediate::SixteenBit(1000)),
+            )
+        )
+    }
+    #[test]
+    fn test_parse_last_add() {
+        //add al, 9
+        let machine_code = &[0x04, 0x09];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::A(RegisterPart::Low)),
+                Operand::Immediate(Immediate::EightBit(9)),
             )
         )
     }
