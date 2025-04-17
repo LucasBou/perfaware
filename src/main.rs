@@ -29,10 +29,10 @@ fn create_file_in_temp_dir<P: AsRef<std::path::Path>>(
     Ok((handle, file))
 }
 fn print_as_hex(bytes: &[u8]) {
-    bytes.iter().for_each(|b| println!("{b:0X}"));
+    bytes.iter().for_each(|b| println!("{b:2X}"));
 }
 fn print_as_bin(bytes: &[u8]) {
-    bytes.iter().for_each(|b| println!("{b:0b}"));
+    bytes.iter().for_each(|b| println!("{b:08b}"));
 }
 
 fn print_compiled_machine_code(asm_instruction: String) {
