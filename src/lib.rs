@@ -17,6 +17,8 @@ enum InParsingInstruction {
     AddImmediateToRM3(bool, bool, u8, u8, u8, u8),
     AddImmediateToRM4(bool, bool, u8, u8, u8, u8, u8),
     AddImmediateToRM5(bool, bool, u8, u8, u8, u8, u8, u8),
+    AddImmediateToAcc1(bool),
+    AddImmediateToAcc2(bool, u8),
 }
 
 struct InstructionParser {
@@ -52,6 +54,9 @@ impl InstructionParser {
                         byte.bitand(2) == 2,
                         byte.bitand(1) == 1,
                     );
+                    None
+                } else if byte.bitand(0b11111110) == 0b00000100 {
+                    self.state = InParsingInstruction::AddImmediateToAcc1(byte.bitand(1) == 1);
                     None
                 } else {
                     panic!(
@@ -264,6 +269,25 @@ impl InstructionParser {
                     Operand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(
                         data_low, byte,
                     ))),
+                ))
+            }
+            InParsingInstruction::AddImmediateToAcc1(w_flag) => {
+                if w_flag {
+                    self.state = InParsingInstruction::AddImmediateToAcc2(w_flag, byte);
+                    None
+                } else {
+                    self.state = InParsingInstruction::Start;
+                    Some(Instruction::Add(
+                        Operand::Register(Register::A(RegisterPart::All)),
+                        Operand::Immediate(Immediate::EightBit(byte)),
+                    ))
+                }
+            }
+            InParsingInstruction::AddImmediateToAcc2(_w_flag, data) => {
+                self.state = InParsingInstruction::Start;
+                Some(Instruction::Add(
+                    Operand::Register(Register::A(RegisterPart::All)),
+                    Operand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(data, byte))),
                 ))
             }
         }
@@ -839,6 +863,30 @@ mod tests {
                     EffAddCalculation::Bp,
                     Displacement::EightBit(0)
                 )
+            )
+        )
+    }
+    #[test]
+    fn test_parse_simple_add() {
+        //add al, ah
+        let machine_code = &[0x00, 0xE0];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::A(RegisterPart::Low)),
+                Operand::Register(Register::A(RegisterPart::High)),
+            )
+        )
+    }
+    #[test]
+    fn test_parse_add_immediate_to_accum() {
+        //add ax, 1000
+        let machine_code = &[0x05, 0xE8, 0x03];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::A(RegisterPart::All)),
+                Operand::Immediate(Immediate::SixteenBit(1000)),
             )
         )
     }
