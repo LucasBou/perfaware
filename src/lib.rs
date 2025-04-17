@@ -12,6 +12,11 @@ enum InParsingInstruction {
     AddRMwReg1(bool, bool),
     AddRMwReg2(bool, bool, u8, u8, u8),
     AddRMwReg3(bool, bool, u8, u8, u8, u8),
+    AddImmediateToRM1(bool, bool),
+    AddImmediateToRM2(bool, bool, u8, u8, u8),
+    AddImmediateToRM3(bool, bool, u8, u8, u8, u8),
+    AddImmediateToRM4(bool, bool, u8, u8, u8, u8, u8),
+    AddImmediateToRM5(bool, bool, u8, u8, u8, u8, u8, u8),
 }
 
 struct InstructionParser {
@@ -41,6 +46,12 @@ impl InstructionParser {
                 } else if byte.bitand(0b11111100) == 0 {
                     self.state =
                         InParsingInstruction::AddRMwReg1(byte.bitand(2) == 2, byte.bitand(1) == 1);
+                    None
+                } else if byte.bitand(0b11111100) == 0b10000000 {
+                    self.state = InParsingInstruction::AddImmediateToRM1(
+                        byte.bitand(2) == 2,
+                        byte.bitand(1) == 1,
+                    );
                     None
                 } else {
                     panic!(
@@ -167,6 +178,93 @@ impl InstructionParser {
                     }
                     OperandsCalculationProcess::NeedsMore => unreachable!(),
                 }
+            }
+            InParsingInstruction::AddImmediateToRM1(s_flag, w_flag) => {
+                let (mod_field, reg_field, rm_field) = mod_reg_rm_from_byte(byte);
+                assert_eq!(reg_field, 0);
+
+                if mod_field == 0 {
+                    self.state = InParsingInstruction::AddImmediateToRM4(
+                        s_flag, w_flag, mod_field, reg_field, rm_field, 0, 0,
+                    );
+                    return None;
+                }
+
+                self.state = InParsingInstruction::AddImmediateToRM2(
+                    s_flag, w_flag, mod_field, reg_field, rm_field,
+                );
+                None
+            }
+            InParsingInstruction::AddImmediateToRM2(
+                s_flag,
+                w_flag,
+                mod_field,
+                reg_field,
+                rm_field,
+            ) => {
+                self.state = InParsingInstruction::AddImmediateToRM3(
+                    s_flag, w_flag, mod_field, reg_field, rm_field, byte,
+                );
+                None
+            }
+            InParsingInstruction::AddImmediateToRM3(
+                s_flag,
+                w_flag,
+                mod_field,
+                reg_field,
+                rm_field,
+                disp_low,
+            ) => {
+                self.state = InParsingInstruction::AddImmediateToRM4(
+                    s_flag, w_flag, mod_field, reg_field, rm_field, disp_low, byte,
+                );
+                None
+            }
+            InParsingInstruction::AddImmediateToRM4(
+                s_flag,
+                w_flag,
+                mod_field,
+                reg_field,
+                rm_field,
+                disp_low,
+                disp_high,
+            ) => {
+                if (!s_flag) & w_flag {
+                    self.state = InParsingInstruction::AddImmediateToRM5(
+                        s_flag, w_flag, mod_field, reg_field, rm_field, disp_low, disp_high, byte,
+                    );
+                    None
+                } else {
+                    self.state = InParsingInstruction::Start;
+                    Some(Instruction::Add(
+                        Operand::EffAddCalculationWithDisplacement(
+                            rm_field_to_effective_address_calculation(rm_field),
+                            Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, disp_high)), //* not sure about that one, the byte/word differnce might be for one side only */
+                        ),
+                        Operand::Immediate(Immediate::EightBit(byte)),
+                    ))
+                }
+            }
+            InParsingInstruction::AddImmediateToRM5(
+                _s_flag,
+                _w_flag,
+                _mod_field,
+                _reg_field,
+                rm_field,
+                disp_low,
+                disp_high,
+                data_low,
+            ) => {
+                self.state = InParsingInstruction::Start;
+                Some(Instruction::Add(
+                    Operand::EffAddCalculationWithDisplacement(
+                        rm_field_to_effective_address_calculation(rm_field),
+                        Displacement::SixteenBit(u16_from_two_switched_u8(disp_low, disp_high)),
+                    ),
+                    Operand::Immediate(Immediate::SixteenBit(u16_from_two_switched_u8(
+                        data_low, byte,
+                    ))),
+                ))
             }
         }
     }
@@ -686,7 +784,7 @@ mod tests {
         )
     }
     #[test]
-    fn test_parse_last_add() {
+    fn test_parse_last_add_before_byte_word_immediate() {
         let machine_code = &[0x01, 0x7B, 0x06];
         assert_eq!(
             get_single_dissasembled_instruction(machine_code),
@@ -696,6 +794,21 @@ mod tests {
                     Displacement::EightBit(6)
                 ),
                 Operand::Register(Register::DI)
+            )
+        )
+    }
+    #[test]
+    fn test_parse_immediate_add_byte() {
+        //add byte [bx], 34
+        let machine_code = &[0x80, 0x07, 0x22];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::Bx,
+                    Displacement::SixteenBit(0)
+                ),
+                Operand::Immediate(Immediate::EightBit(34))
             )
         )
     }
