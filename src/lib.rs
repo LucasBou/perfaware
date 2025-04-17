@@ -812,4 +812,19 @@ mod tests {
             )
         )
     }
+    #[test]
+    fn test_parse_immediate_add_byte_wide() {
+        //add word [bp + si + 1000], 29
+        let machine_code = &[0x83, 0x82, 0xE8, 0x03, 0x1D];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::EffAddCalculationWithDisplacement(
+                    EffAddCalculation::BpSi,
+                    Displacement::SixteenBit(1000)
+                ),
+                Operand::Immediate(Immediate::EightBit(29))
+            )
+        )
+    }
 }
