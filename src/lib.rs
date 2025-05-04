@@ -902,4 +902,28 @@ mod tests {
             )
         )
     }
+    #[test]
+    fn test_parse_add_with_effective_adress_calculation() {
+        //add bx, [bx+si]
+        let machine_code = &[0x03, 0x18];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::B(RegisterPart::All)),
+                Operand::EffAddCalculation(EffAddCalculation::BxSi),
+            )
+        )
+    }
+    #[test]
+    fn test_parse_add_immediate_si() {
+        //add si, 2
+        let machine_code = &[0x83, 0xC6, 0x02];
+        assert_eq!(
+            get_single_dissasembled_instruction(machine_code),
+            Instruction::Add(
+                Operand::Register(Register::SI),
+                Operand::Immediate(Immediate::EightBit(2)), // eight or sixteen ?
+            )
+        )
+    }
 }

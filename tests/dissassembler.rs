@@ -21,7 +21,7 @@ fn create_file_in_temp_dir<P: AsRef<Path>>(path: P) -> std::io::Result<(File, Pa
 
 fn assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file: &str) {
     let contents = std::fs::read(input_file).expect("Failed to read machine code file");
-    let output = dbg!(generate_assembly(&contents));
+    let output = generate_assembly(&contents);
     let output_file_name = input_file
         .split("/")
         .last()
@@ -60,6 +60,11 @@ fn test_second_listing_with_nasm() {
 #[test]
 fn test_third_listing_with_nasm() {
     let input_file = "tests/data/listing_0039_more_movs";
+    assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file);
+}
+#[test]
+fn test_fourth_listing_adds_only_with_nasm() {
+    let input_file = "tests/data/listing_0041_add_part_only";
     assert_equal_after_dissassemble_and_reassemble_using_nasm(input_file);
 }
 #[test]
