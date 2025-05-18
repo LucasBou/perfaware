@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use perfaware::generate_assembly;
+use perfaware::dissassembler::generate_assembly;
 
 fn read_asm_file_just_instructions(fp: &str) -> String {
     let contents = std::fs::read_to_string(fp).unwrap();
